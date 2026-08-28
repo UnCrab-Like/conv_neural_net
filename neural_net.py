@@ -11,7 +11,7 @@ from src.front_prop import front_propagation
 from src.back_prop import back_propagation
 
 if __name__ == "__main__":
-    f = gzip.open("train-images-idx3-ubyte.gz", "r")
+    f = gzip.open("/training_data/train-images-idx3-ubyte.gz", "r")
 
     image_size = 28
     num_images = 60000
@@ -22,7 +22,7 @@ if __name__ == "__main__":
     data = data.reshape(num_images, image_size, image_size, 1)
     data = data / 255.0
 
-    f = gzip.open("train-labels-idx1-ubyte.gz", "r")
+    f = gzip.open("/training_data/train-labels-idx1-ubyte.gz", "r")
 
     f.read(8)
     buf = f.read(num_images)
