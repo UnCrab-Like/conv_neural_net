@@ -9,10 +9,7 @@ import warnings
 
 from src.front_prop import front_propagation
 from src.back_prop import back_propagation
-
-
-
-
+from src.adam_optimizer import AdamOptimizer
 
 
 if __name__ == "__main__":
@@ -71,6 +68,8 @@ if __name__ == "__main__":
     load = ""
     load_bool = -1
 
+    filter_batch = 16
+
     while load_bool == -1:
         load = input("Load from save? (Y/n) \n")
         if load == "y" or load == "Y" or load == "Yes" or load == "yes":
@@ -82,8 +81,8 @@ if __name__ == "__main__":
             load_bool = 1
         elif load == "n" or load == "N" or load == "No" or load == "no":
             dense_layer_2 = kaiming_uniform_init((128, 10), 128)
-            dense_layer_1 = kaiming_uniform_init((169, 128), 169)
-            conv_filter = kaiming_uniform_init((3, 3), 9)
+            dense_layer_1 = kaiming_uniform_init((169 * filter_batch, 128), 169)
+            conv_filter = kaiming_uniform_init((filter_batch, 3, 3), 9)
             bias_hidden = kaiming_uniform_init((1, 128), 1)
             bias_out = kaiming_uniform_init((1, 10), 1)
             load_bool = 1
@@ -106,7 +105,7 @@ if __name__ == "__main__":
     training = -1
 
     while training == -1:
-        training_start = input("Run trainning for model? (Y/n) \n")
+        training_start = input("Run training for model? (Y/n) \n")
 
         if training_start == "Y" or training_start == "y" or training_start == "Yes" or training_start == "yes":
 
@@ -117,9 +116,9 @@ if __name__ == "__main__":
                 settings = input("Use default settings? (Y/n) \n")
 
                 if settings == "y" or settings == "Y" or settings == "Yes" or settings == "yes":
-                    learning_rate = 0.05
-                    epochs = 20
-                    batch_size = 512
+                    learning_rate = 0.001
+                    epochs = 1
+                    batch_size = 64
                     load_settings = 1
                 elif settings == "n" or settings == "N" or settings == "No" or settings == "no":
                     learning_rate =   float(input("Learning rate (float) =    "))
@@ -127,6 +126,7 @@ if __name__ == "__main__":
                     batch_size =        int(input("Batch size (int) =         "))
                     load_settings = 0
 
+            opt = AdamOptimizer(lr = learning_rate)
             print("Running...")
 
             for epoch in range(epochs):
@@ -197,32 +197,37 @@ if __name__ == "__main__":
                         dense_layer_1, batch_RELU_2, RELU_3_error, batch_size_actual
                     )
 
-                    RELU_2_error = (RELU_3_error @ dense_layer_1.T).reshape(batch_size_actual, 13, 13) * back.deriv_leaky_RELU(batch_pooled, 0.001)
+                    RELU_2_error = (RELU_3_error @ dense_layer_1.T).reshape(batch_size_actual, filter_batch, 13, 13) * back.deriv_leaky_RELU(batch_pooled, 0.01)
 
-                    max_pooling_error = cp.repeat(cp.repeat(RELU_2_error, 2, axis=1), 2, axis=2) * back.deriv_max_pooling(batch_out_RELU_1)
+
+                    max_pooling_error = cp.repeat(cp.repeat(RELU_2_error, 2, axis=2), 2, axis=3) * back.deriv_max_pooling(batch_out_RELU_1)
 
                     RELU_1_error = max_pooling_error * back.deriv_leaky_RELU(batch_conv, 0.001)
 
-                    # input_error = back.deriv_conv_layer(RELU_1_error, conv_filter)
+                    _, grad_conv_filter, _ = back.conv_backward_im2col(
+                        RELU_1_error,
+                        (batch_images, conv_filter, None, {"stride": 1, "pad": 0}),
+                    )
+                    grad_conv_filter = grad_conv_filter / batch_size_actual
 
-                    grad_conv_filter, conv_filter_error = back.deriv_conv_layer(batch_images, conv_filter, batch_conv, RELU_1_error)
+                    grad_W_out = cp.clip(grad_W_out, -1.0, 1.0)
+                    grad_W_hidden = cp.clip(grad_W_hidden, -1.0, 1.0)
+                    grad_conv_filter = cp.clip(grad_conv_filter, -1.0, 1.0)
 
+                    dense_layer_2 = opt.update('W2', dense_layer_2, grad_W_out)
+                    bias_out = opt.update('b2', bias_out, grad_b_out)
 
+                    dense_layer_1 = opt.update('W1', dense_layer_1, grad_W_hidden)
+                    bias_hidden = opt.update('b1', bias_hidden, grad_b_hidden)
+                    conv_filter = opt.update('conv_filter', conv_filter, grad_conv_filter)
 
                     # Update the weight matrix
-                    dense_layer_2, bias_out = back.learning(
-                        grad_W_out, grad_b_out, dense_layer_2, bias_out, learning_rate
-                    )
-                    dense_layer_1, bias_hidden = back.learning(
-                        grad_W_hidden, grad_b_hidden, dense_layer_1, bias_hidden, learning_rate
-                    )
-
-                    # Update the convolutional filter
-                    placeholder = cp.zeros((0))
-                    conv_filter, placeholder = back.learning(
-                        grad_conv_filter, placeholder, conv_filter, placeholder, learning_rate
-                    )
-
+                    # dense_layer_2, bias_out = back.learning(
+                    #     grad_W_out, grad_b_out, dense_layer_2, bias_out, learning_rate
+                    # )
+                    # dense_layer_1, bias_hidden = back.learning(
+                    #     grad_W_hidden, grad_b_hidden, dense_layer_1, bias_hidden, learning_rate
+                    # )
 
                     batch_loss_all = back.cross_entropy_loss(batch_preds, batch_labels)
                     batch_loss = cp.mean(batch_loss_all)
@@ -247,7 +252,7 @@ if __name__ == "__main__":
     validation_start = -1
 
     while validation_start == -1:
-        validation = input("Run validaiton test for model? (Y/n) \n")
+        validation = input("Run validation test for model? (Y/n) \n")
 
         if validation == "Y" or validation == "y" or validation == "Yes" or validation == "yes":
 
@@ -257,7 +262,7 @@ if __name__ == "__main__":
                 settings = input("Use default settings? (Y/n) \n")
 
                 if settings == "y" or settings == "Y" or settings == "Yes" or settings == "yes":
-                    batch_size = 512
+                    batch_size = 64
                     load_settings = 1
                 elif settings == "n" or settings == "N" or settings == "No" or settings == "no":
                     batch_size =        int(input("Batch size (int) =         "))
@@ -266,6 +271,7 @@ if __name__ == "__main__":
             print("Running...")
 
             total_loss = 0
+            total_correct = 0
 
             for i in range(0, len(validation_data), batch_size):
                 batch_start = i
@@ -300,6 +306,10 @@ if __name__ == "__main__":
 
                 batch_preds = exp_logits / cp.sum(exp_logits, axis=1, keepdims = True)
 
+                predictions = cp.argmax(batch_preds, axis=1)
+                correct_predictions = cp.sum(predictions == batch_labels)
+                total_correct += int(correct_predictions.get())
+
 
                 batch_loss_all = back.cross_entropy_loss(batch_preds, batch_labels)
                 batch_loss = cp.mean(batch_loss_all)
@@ -309,14 +319,10 @@ if __name__ == "__main__":
             avg_loss = total_loss / len(validation_data)
             print(f"Total loss: {avg_loss:.4f}")
 
+            final_accuracy = (total_correct / len(validation_data)) * 100
+            print(f"True Validation Accuracy: {final_accuracy:.2f}%")
+
             validation_start = 1
 
         else:
             validation_start = 0
-
-
-    
-
-
-
-

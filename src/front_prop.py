@@ -6,6 +6,7 @@ from PIL import Image
 import cupy as cp
 
 
+
 class front_propagation:
     @staticmethod
     def filter_image(
@@ -139,53 +140,21 @@ class front_propagation:
 
         elif mode == "L":
             ### Image initialisation
-
+            
             ### Dimensions of the image.
             batch, height, width = img_matrix.shape
             filter = cp.asarray(filter)
-            # f_height_max = height / 3
-            # f_width_max = width / 3
-
-            ### Filters.
-            # The filter is non-static -> self.filter, contrary to my first iteration which used sobel. It is kaimed already
-
-            ### Filtered image matrix initialisation
-            # filtered_img_matrix = cp.empty((int(f_height_max), int(f_width_max)))
-            #
-            # ### Filtering.
-            # # Passing the filter through the image
-            # for y in range(int(f_height_max)):
-            #     for x in range(int(f_width_max)):
-            #         img_region = img_matrix[x * 3 : x * 3 + 3, y * 3 : y * 3 + 3]
-            #
-            #         f_img_matrix = cp.sum(img_region * filter)
-            #
-            #         filtered_img_matrix[y, x] = f_img_matrix
-            #
-            # ### Color clipping
-            # # Reajusting the matrix values to be in between 0 and 255.
-            # filtered_img_matrix = cp.clip(filtered_img_matrix, 0, 255).astype(cp.uint8)
-            # # Image creation.
-            # # filtered_img = Image.fromarray(filtered_img_matrix)
-            # # filtered_img = filtered_img.convert("L")
-
-            ###
+            f_batch, f_height, f_width = filter.shape
             
-            output_height = height - 3 + 1 # 3 being filter height
-            output_width = width - 3 + 1 # 3 being filter height
+            output_height = height - f_height + 1 # 3 being filter height
+            output_width = width - f_width + 1 # 3 being filter height
 
-            fil_row = cp.repeat(cp.arange(3), 3)  # 9x
-            fil_col = cp.tile(cp.arange(3), 3)  # 9x
+            ### Grid initialisation.
+            fil_row = cp.repeat(cp.arange(f_height), f_height)  # 9x
+            fil_col = cp.tile(cp.arange(f_width), f_width)  # 9x
 
             matrix_row = cp.repeat(cp.arange(output_height), output_width)  # nx
             matrix_column = cp.tile(cp.arange(output_width), output_height )  # mx
-
-            # matrix_row, matrix_column = cp.meshgrid(cp.arange(width - 2), cp.arange(height - 2), indexing='ij')
-
-            # # Flatten to establish a uniform 1D spatial mapping
-            # matrix_row = matrix_row.ravel()
-            # matrix_column = matrix_column.ravel()
-
 
             cords_x = fil_row[:, cp.newaxis] + matrix_row  # 9xn
             cords_y = fil_col[:, cp.newaxis] + matrix_column  # 9xm
@@ -197,13 +166,21 @@ class front_propagation:
 
             cord_matrix = img_matrix_[:, cords_x, cords_y]
 
-            filtered_img_matrix = (
-                cp.sum(filter.ravel()[cp.newaxis, :, cp.newaxis] * cord_matrix, axis=1)
-            ).reshape(batch, output_height, output_width)
+            ### Long process giving the correct value.
+            #
+            # return (cp.asarray([cp.sum(filter[i].ravel()[cp.newaxis, cp.newaxis, :, cp.newaxis] * cord_matrix, axis=2) for i in range(f_batch)])).reshape(batch, f_batch, output_height, output_width)
+            
+            
+            flat_filters = filter.reshape(f_batch, -1)[cp.newaxis, :, :, cp.newaxis]
 
-            # filtered_img_matrix = cp.clip(filtered_img_matrix, 0, 255).astype(cp.uint8)
+            # 2. Reshape cord_matrix from (64, 9, 676) to (64, 1, 9, 676)
+            expanded_cord = cord_matrix[:, cp.newaxis, :, :]
 
-            return filtered_img_matrix
+            # 3. Multiply, sum across axis 2 (the '9' dimension), and reshape
+            return cp.sum(flat_filters * expanded_cord, axis=2).reshape(batch, f_batch, output_height, output_width)
+
+
+
 
     # def leaky_RELU_img(array, ):
     #     if self.image.mode == "RGB":
@@ -309,35 +286,14 @@ class front_propagation:
             return r_max_arr, g_max_arr, b_max_arr
 
         elif mode == "L":
-            # img_matrix = np.array(self.image)
-
-            # width, height = img_matrix.shape
-
-            # img_max_arr = cp.empty((int(height / 2), int(width / 2)))
-
-            # for y in range(int(height / 2)):
-            #     for x in range(int(width / 2)):
-            #         img_region = img_matrix[y * 2 : y * 2 + 2, x * 2 : x * 2 + 2]
-
-            #         img_max = cp.max(img_region)
-
-            #         img_max_arr[y][x] = img_max
-
-            batch, height, width = img_matrix.shape
+            batch, filter, height, width = img_matrix.shape
 
             pooled = img_matrix.reshape(
-                batch, height // 2,
+                batch, filter, height // 2,
                 2,
                 width // 2,
                 2,
-            ).max(axis=(2, 4))
-
-            #img_max_arr = cp.clip(img_max_arr, 0, 255).astype(cp.uint8)
-
-            # img_max = Image.fromarray(img_max_arr)
-
-            # self.image = img_max
-            # return img_max_arr
+            ).max(axis=(3, 5))
             return pooled
 
     # max_pooled_img = max_pooling(activated_img)

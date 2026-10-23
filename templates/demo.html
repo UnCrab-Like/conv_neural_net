@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Demo page!</title>
+        <link rel="stylesheet", href="/static/styles.css">
+    </head>
+
+    <h1>
+        Model progression:
+        <subhead>
+            <br>V1           /            V2<br>
+        </subhead>
+        
+        <hr>
+    </h1>
+    
+    <div class="comp">
+        <div class="table">
+            <div class="box">
+                My first functional model. It is faulty in many parts, and runs with the power of trust. It's a miracle that it works that well...<br>
+                So what does it look like?<br>
+                <p margin-left: 15px>
+                     - 1 filter<br>
+                     - Leaky RELU<br>
+                     - Max Pooling<br>
+                     -
+                </p>
+            </div>
+    
+            <div class="v-seperator"></div>
+            
+            <div class="box">
+                After some revision, I decided to work on V2. It took me an ungodly amount of time and motivation. And now I present to you: V2!<br>
+                So what did I change?<br>
+                <p margin-left: 15px>
+                     - 16 filter. (It helps learning process while making it easier for the hidden layers.)<br>
+                     - Making it work with batched filters. (Matrix mismatch :\)<br>
+                     - Fixing the deriv_max_pooling. (Somehow it was incorrect, yet still worked??)<br>
+                     - Added validation. (It is important! Models can have too much bias / variance.)<br>
+                </p>
+            </div>
+        </div>
+    </div>
+    
+</html>

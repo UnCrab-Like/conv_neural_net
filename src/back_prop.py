@@ -3,6 +3,7 @@ from os import stat
 from PIL import Image
 import cupy as cp
 
+from src.im_and_col import IMCOL_
 
 class back_propagation:
     @staticmethod
@@ -40,31 +41,58 @@ class back_propagation:
     @staticmethod
     def deriv_max_pooling(input):
         input = cp.asarray(input)
-        batch, height, width = input.shape
-        input_reshaped = input.reshape((batch, height // 2, 2, width // 2, 2))
-        #input_reshaped = input.reshape((batch, height // 2, 2, width))
-        #derived_max = [[cp.where(input_reshaped[:, i, : j, :] == input_reshaped[:, i, :, j, :].max(), 1, 0) for j in range(height//2)]for i in range(width//2)]
-        #return input_reshaped[:, 1, :, 0:4]
-        derived_max = [cp.where(input_reshaped[:, i, :, j, :] == input_reshaped[:, i, :, j, :].max(), 1, 0) for i in range(height//2) for j in range(width//2)]
-        derived_max = cp.stack(derived_max, axis=2).reshape(batch, height, width)
-        return derived_max
+        batch, filter_batch, height, width = input.shape
+        return_height, return_width = height // 2, width // 2
 
+        input_reshaped = input.reshape((batch, filter_batch, return_height, 2, return_width, 2))
+        block_maxes = input_reshaped.max(axis=(3, 5), keepdims=True)
+
+        derived_max = cp.where(input_reshaped == block_maxes, 1, 0)
+        derived_max = derived_max.transpose(0, 1, 2, 3, 4, 5)
+        return derived_max.reshape(batch, filter_batch, height, width)
+    
     @staticmethod
-    def deriv_conv_layer(input, filter, output, error):
-        input = cp.asarray(input)
-        filter = cp.asarray(filter)
-        output = cp.asarray(output)
-        error = cp.asarray(error)
+    def conv_backward_im2col(dOut, cache):
+        """
+        Computes the backward pass for a convolutional layer using col2im.
+        """
+        x, w, _, conv_param = cache
+        x = cp.asarray(x)
+        w = cp.asarray(w)
+        dOut = cp.asarray(dOut)
+        stride, pad = conv_param["stride"], conv_param["pad"]
 
-        dW = cp.zeros(filter.shape)   # Partial derivative of the filter (weight)
-        dX = cp.zeros(input.shape)    # Partial derivative of the input (x)
+        grayscale = x.ndim == 3 and w.ndim == 3
+        if grayscale:
+            x = x[:, cp.newaxis, :, :]
+            w = w[:, cp.newaxis, :, :]
+        elif x.ndim != 4 or w.ndim != 4:
+            raise ValueError("x and w must both be 3D grayscale or 4D channel tensors")
 
-        for m in range(filter.shape[0]):
-            for n in range(filter.shape[1]):
-                dW[m, n] = cp.sum(error * input[:,m:m+output.shape[1], n:n+output.shape[2]]) / input.shape[0]
-                dX[:, m:m+output.shape[1], n:n+output.shape[2]] += error * filter[m, n]
-        
-        return dW, dX
+        N, C, H, W = x.shape
+        F, weight_channels, HH, WW = w.shape
+        if C != weight_channels:
+            raise ValueError("The input and filter channel counts must match")
+
+        out_h = (H + 2 * pad - HH) // stride + 1
+        out_w = (W + 2 * pad - WW) // stride + 1
+        if dOut.shape != (N, F, out_h, out_w):
+            raise ValueError(
+                f"dOut must have shape {(N, F, out_h, out_w)}, got {dOut.shape}"
+            )
+
+        X_col = IMCOL_.im2col(x, HH, WW, pad, stride)
+        dOut_reshaped = dOut.transpose(1, 0, 2, 3).reshape(F, -1)
+
+        db = cp.sum(dOut_reshaped, axis=1)
+        dW = (dOut_reshaped @ X_col.T).reshape(F, C, HH, WW)
+        dX_col = w.reshape(F, -1).T @ dOut_reshaped
+        dX = IMCOL_.col2im(dX_col, N, C, H, W, HH, WW, pad, stride)
+
+        if grayscale:
+            dX = dX[:, 0, :, :]
+            dW = dW[:, 0, :, :]
+        return dX, dW, db
 
     @staticmethod
     def backpropagate(layer, prev_activtions, error_current, batch_size):
