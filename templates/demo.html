@@ -1,45 +1,100 @@
 <!DOCTYPE html>
-<html>
-    <head>
-        <title>Demo page!</title>
-        <link rel="stylesheet", href="/static/styles.css">
-    </head>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CNN training demo</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='demo.css') }}">
+    <script src="{{ url_for('static', filename='script.js') }}" defer></script>
+</head>
+<body>
+    <main class="demo-page">
+        <a class="back-link" href="{{ url_for('home') }}">← Back to project</a>
+        <header class="demo-header">
+            <p class="eyebrow">Interactive MNIST playground</p>
+            <h1>Train the convolutional neural network</h1>
+            <p>Choose a model, set a small training run, and watch its loss and image features update.</p>
+        </header>
 
-    <h1>
-        Model progression:
-        <subhead>
-            <br>V1           /            V2<br>
-        </subhead>
-        
-        <hr>
-    </h1>
-    
-    <div class="comp">
-        <div class="table">
-            <div class="box">
-                My first functional model. It is faulty in many parts, and runs with the power of trust. It's a miracle that it works that well...<br>
-                So what does it look like?<br>
-                <p margin-left: 15px>
-                     - 1 filter<br>
-                     - Leaky RELU<br>
-                     - Max Pooling<br>
-                     -
-                </p>
+        <section class="panel" aria-labelledby="model-heading">
+            <h2 id="model-heading">Choose a model</h2>
+            <form id="training-form">
+            <div class="model-options">
+                <label class="model-card">
+                    <input type="radio" name="model" value="v1">
+                    <span>
+                        <strong>Version 1</strong>
+                        <span>Single 3 × 3 filter, SGD updates, and the original network layers.</span>
+                    </span>
+                </label>
+                <label class="model-card">
+                    <input type="radio" name="model" value="v2" checked>
+                    <span>
+                        <strong>Version 2</strong>
+                        <span>16 parallel 3 × 3 filters with Adam updates.</span>
+                    </span>
+                </label>
             </div>
-    
-            <div class="v-seperator"></div>
-            
-            <div class="box">
-                After some revision, I decided to work on V2. It took me an ungodly amount of time and motivation. And now I present to you: V2!<br>
-                So what did I change?<br>
-                <p margin-left: 15px>
-                     - 16 filter. (It helps learning process while making it easier for the hidden layers.)<br>
-                     - Making it work with batched filters. (Matrix mismatch :\)<br>
-                     - Fixing the deriv_max_pooling. (Somehow it was incorrect, yet still worked??)<br>
-                     - Added validation. (It is important! Models can have too much bias / variance.)<br>
-                </p>
+
+                <div class="settings-grid">
+                    <label>
+                        Training samples
+                        <input name="sample_count" type="number" min="1" max="2048" value="256" required>
+                        <small>Random MNIST images, up to 2,048</small>
+                    </label>
+                    <label>
+                        Validation samples
+                        <input name="validation_count" type="number" min="1" max="2048" value="256" required>
+                        <small>Held-out MNIST test images</small>
+                    </label>
+                    <label>
+                        Epochs
+                        <input name="epochs" type="number" min="1" max="20" value="2" required>
+                        <small id="epoch-limit">V2 supports up to 20 epochs</small>
+                    </label>
+                    <label>
+                        Batch size
+                        <input name="batch_size" type="number" min="1" max="128" value="32" required>
+                    </label>
+                    <label>
+                        Learning rate
+                        <input name="learning_rate" type="number" min="0.00001" max="1" step="any" value="0.001" required>
+                    </label>
+                </div>
+                <button id="train-button" type="submit">Start training</button>
+            </form>
+        </section>
+
+        <section class="panel progress-panel" aria-labelledby="progress-heading">
+            <div class="section-heading">
+                <div>
+                    <h2 id="progress-heading">Training progress</h2>
+                    <p id="status-message" role="status" aria-live="polite">Ready when you are.</p>
+                </div>
+                <span id="epoch-count" class="epoch-count">No epochs yet</span>
             </div>
-        </div>
-    </div>
-    
+            <div class="chart-wrap">
+                <svg id="loss-chart" viewBox="0 0 600 240" role="img" aria-label="Training and validation loss by epoch">
+                    <text x="300" y="110" text-anchor="middle">Loss chart will appear here</text>
+                </svg>
+                <div class="chart-legend" aria-label="Chart legend">
+                    <span><i class="training-legend"></i>Training loss</span>
+                    <span><i class="validation-legend"></i>Validation loss</span>
+                </div>
+            </div>
+            <p id="error-message" class="error-message" role="alert" hidden></p>
+        </section>
+
+        <section id="visualization-panel" class="panel" aria-labelledby="visualization-heading" hidden>
+            <div class="section-heading">
+                <div>
+                    <h2 id="visualization-heading">What the network sees</h2>
+                    <p id="prediction-message"></p>
+                </div>
+            </div>
+            <div id="image-steps" class="image-steps"></div>
+        </section>
+    </main>
+</body>
 </html>
